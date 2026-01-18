@@ -1,34 +1,53 @@
-# ASC26 UnifoLM Runner
+# ASC26 UnifoLM Runner（可复现环境搭建指南｜换机快速上手）
 
-本仓库用于记录我在 VM 的Ubuntu上跑 ASC26 baseline（UnifoLM world model interaction）的**可复现流程**：从零开始搭环境、准备代码/输入/模型、按 case 脚本运行、以及 PSNR 评测。
+本仓库的目的：当我换到一台 **有 NVIDIA GPU 的 Linux 机器**（或远程 GPU 平台）时，可以按照本文档快速完成：
+- 拉取 UnifoLM 代码
+- 拉取 ASC 官方输入（5 个 scenario）
+- 下载 UnifoLM-WMA-0 模型权重
+- 设置必要路径（仅修改 data_dir）
+- 运行 baseline 推理与 PSNR 评测
 
 本仓库 **不包含** 数据集/模型权重/输出结果（避免仓库过大和误提交）。
 
 ---
 
-## 0. 目录规划
+## 0. 一行配置：统一根目录（强烈推荐）
 
-我在 VM 上固定使用以下目录结构（后续命令全部基于此路径）：
+不要写死 `/home/xxx/...`，统一用一个根目录变量（换机器只改这一行）：
 
-- Runner 仓库（本仓库，仅脚本/文档）  
-  `/home/bohao-fang/asc26/asc26-unifolm-runner`
+```bash
+export ASC26_ROOT="$HOME/asc26"
+mkdir -p "$ASC26_ROOT"
+```
 
-- 代码仓库（UnifoLM）  
-  `/home/bohao-fang/asc26/unifolm-world-model-action`
-
-- 输入数据仓库（官方 5 个 scenario + PSNR 脚本）  
-  `/home/bohao-fang/asc26/ASC26-Embodied-World-Model-Optimization`
-
-- 模型权重目录（你本地自行准备，别提交到 GitHub）  
-  `/home/bohao-fang/asc26/models/UnifoLM-WMA-0-Dual`
-
-> 如果你换机器/用户名：把本文所有 `/home/bohao-fang` 替换成你的实际 home 路径即可。
+后续所有路径都基于：
+- UnifoLM 代码：`$ASC26_ROOT/unifolm-world-model-action`
+- ASC 输入仓库：`$ASC26_ROOT/ASC26-Embodied-World-Model-Optimization`
+- 模型权重目录：`$ASC26_ROOT/models/UnifoLM-WMA-0-Dual`
 
 ---
 
-## 1. 系统前置依赖
+## 1. 资源链接（官方文档里的网址，务必收藏）
 
-推荐 Ubuntu 20.04/22.04 + NVIDIA GPU 环境，确保下面命令可用：
+来自官方 Workflow Tutorial（你提供的截图中出现的链接）：
+
+- UnifoLM 代码仓库（GitHub）  
+  https://github.com/unitreerobotics/unifolm-world-model-action
+
+- UnifoLM-WMA-0-Dual 权重（HuggingFace）  
+  https://huggingface.co/unitreerobotics/UnifoLM-WMA-0-Dual
+
+- ASC 官方输入/评测仓库（GitHub Repo）  
+  https://github.com/ASC-Competition/ASC26-Embodied-World-Model-Optimization.git
+
+- ASC 组织主页（入口）  
+  https://github.com/ASC-Competition
+
+---
+
+## 2. 系统前置检查（GPU 必备）
+
+确认 GPU 可见：
 
 ```bash
 nvidia-smi
@@ -41,187 +60,184 @@ sudo apt-get update
 sudo apt-get install -y git wget curl rsync
 ```
 
+如需 Git LFS（部分仓库/权重可能用到）：
+
+```bash
+sudo apt-get install -y git-lfs
+git lfs install
+```
+
 ---
 
-## 2. Conda 环境（推荐）
-
-创建并进入环境（环境名用 `asc26`）：
+## 3. Conda 环境（推荐）
 
 ```bash
 conda create -n asc26 python=3.10 -y
 conda activate asc26
 ```
 
+> PyTorch/CUDA 版本请按你的机器和 UnifoLM 仓库要求安装。  
+> 如果你在运行时遇到 `CUDA not available` / `libcuda.so` / `torch` 版本不匹配，优先检查 torch 与驱动版本。
+
 ---
 
-## 3. Clone 代码仓库（UnifoLM）
-
-在固定目录下 clone（已存在可跳过）：
+## 4. 获取 UnifoLM 代码（必做）
 
 ```bash
-mkdir -p /home/bohao-fang/asc26
-cd /home/bohao-fang/asc26
-git clone <UnifoLM代码仓库地址> unifolm-world-model-action
+cd "$ASC26_ROOT"
+git clone https://github.com/unitreerobotics/unifolm-world-model-action.git
 ```
 
-**重要提醒：不要在别的地方再 clone 第二份**（例如 `~/unifolm-world-model-action`），否则很容易出现“改了 A 跑的是 B”。
+> 重要：只保留这一份代码目录，避免出现“改了 A 跑的是 B”。
 
----
-
-## 4. 安装 UnifoLM 依赖
-
-进入代码仓库：
+安装：
 
 ```bash
 conda activate asc26
-cd /home/bohao-fang/asc26/unifolm-world-model-action
-```
-
-```bash
+cd "$ASC26_ROOT/unifolm-world-model-action"
 pip install .
 ```
 
-> 说明：如果你希望之后改代码能立即生效，通常更推荐：
+> 如果你希望后续改代码立即生效，可用：
 > ```bash
 > pip install -e .
 > ```
-> 但“只跑 baseline”场景下，`pip install .` 也完全可以。
 
 ---
 
-## 5. Clone 官方输入仓库（scenario 数据）
-
-官方仓库地址：
-
-- https://github.com/ASC-Competition/ASC26-Embodied-World-Model-Optimization.git
-
-clone：
+## 5. 获取 ASC 官方输入仓库（5 个 scenario + PSNR 脚本）
 
 ```bash
-cd /home/bohao-fang/asc26
+cd "$ASC26_ROOT"
 git clone https://github.com/ASC-Competition/ASC26-Embodied-World-Model-Optimization.git
 ```
 
-检查结构：
+如发现大文件不完整（大小异常小），尝试：
 
 ```bash
-cd /home/bohao-fang/asc26/ASC26-Embodied-World-Model-Optimization
-ls -1
-```
-
-如果大文件下载不完整（文件大小异常小），尝试：
-
-```bash
-sudo apt-get install -y git-lfs
-git lfs install
+cd "$ASC26_ROOT/ASC26-Embodied-World-Model-Optimization"
 git lfs pull
 ```
 
 ---
 
-## 6. 将 scenario 目录放到 UnifoLM 仓库根目录（推荐：软链接）
+## 6. 获取模型权重（HuggingFace）
 
-比赛/官方示例通常要求：在 `unifolm-world-model-action` 仓库根目录下能直接看到 `unitree_*` 目录。
+目标目录约定为：
 
-推荐用软链接（不重复占空间、数据仓库保持原样）：
+`$ASC26_ROOT/models/UnifoLM-WMA-0-Dual`
+
+两种常用下载方式（二选一）：
+
+### 方式 A：git lfs clone（最直观）
+```bash
+mkdir -p "$ASC26_ROOT/models"
+cd "$ASC26_ROOT/models"
+git lfs clone https://huggingface.co/unitreerobotics/UnifoLM-WMA-0-Dual
+```
+
+### 方式 B：huggingface-cli（可控/可断点）
+先安装：
+```bash
+pip install -U "huggingface_hub[cli]"
+```
+
+下载：
+```bash
+mkdir -p "$ASC26_ROOT/models/UnifoLM-WMA-0-Dual"
+huggingface-cli download unitreerobotics/UnifoLM-WMA-0-Dual \
+  --local-dir "$ASC26_ROOT/models/UnifoLM-WMA-0-Dual" \
+  --local-dir-use-symlinks False
+```
+
+验证目录存在文件：
+```bash
+ls -lah "$ASC26_ROOT/models/UnifoLM-WMA-0-Dual"
+```
+
+> 注意：权重很大，不要加入 git；本仓库已用 `.gitignore` 屏蔽大文件目录。
+
+---
+
+## 7. 把 scenario 放到 UnifoLM 仓库根目录（软链接，推荐）
+
+官方/比赛脚本通常希望在 UnifoLM 仓库根目录能看到 `unitree_*` 目录。建议用软链接：
 
 ```bash
-cd /home/bohao-fang/asc26/unifolm-world-model-action
+cd "$ASC26_ROOT/unifolm-world-model-action"
 
-for d in /home/bohao-fang/asc26/ASC26-Embodied-World-Model-Optimization/unitree_*; do
+for d in "$ASC26_ROOT/ASC26-Embodied-World-Model-Optimization"/unitree_*; do
   name="$(basename "$d")"
   ln -sfn "$d" "$name"
 done
 ```
 
-### 6.1 验证：当前应能看到这些目录
-我这台 VM 当前 `unifolm-world-model-action` 根目录下能看到（你贴出来的真实结果）：
-
-- `unitree_deploy`
-- `unitree_g1_pack_camera`
-- `unitree_z1_dual_arm_cleanup_pencils`
-- `unitree_z1_dual_arm_stackbox`
-- `unitree_z1_dual_arm_stackbox_v2`
-- `unitree_z1_stackbox`
-
-检查命令：
-
+检查：
 ```bash
-cd /home/bohao-fang/asc26/unifolm-world-model-action
+cd "$ASC26_ROOT/unifolm-world-model-action"
 ls -1 | grep '^unitree_'
 ```
 
-> 说明：`unitree_deploy` 可能是代码/部署相关目录，不一定属于 5 个官方 scenario 输入；但它在仓库根目录出现是正常的。
+> 我在旧 VM 上见到的目录包括（仅供对照）：  
+> `unitree_deploy`、`unitree_g1_pack_camera`、`unitree_z1_dual_arm_cleanup_pencils`、`unitree_z1_dual_arm_stackbox`、`unitree_z1_dual_arm_stackbox_v2`、`unitree_z1_stackbox`  
+> 其中 `unitree_deploy` 可能是代码/部署目录，不一定属于 5 个输入 scenario，但出现并不奇怪。
 
 ---
 
-## 7. 准备模型权重（不要提交到 GitHub）
+## 8. 按比赛要求：只修改 `data_dir`
 
-请把权重放到：
+只改这个文件中的 `data_dir`：
 
-`/home/bohao-fang/asc26/models/UnifoLM-WMA-0-Dual`
+`$ASC26_ROOT/unifolm-world-model-action/configs/inference/world_model_interaction.yaml`
 
-并确认权重文件确实存在：
-
-```bash
-ls -lah /home/bohao-fang/asc26/models/UnifoLM-WMA-0-Dual
-```
-
----
-
-## 8. 按要求：只修改 `data_dir`
-
-比赛要求通常限制：只能改 `configs/inference/world_model_interaction.yaml` 里的 `data_dir`。
-
-在我当前环境中，`data_dir` 已经是（你贴出来的真实值，约在第 225 行）：
-
-`/home/bohao-fang/asc26/unifolm-world-model-action`
-
-检查命令：
-
-```bash
-grep -n "data_dir" /home/bohao-fang/asc26/unifolm-world-model-action/configs/inference/world_model_interaction.yaml
-```
-
-如果需要修改，把它改成：
+把 `data_dir` 设为 UnifoLM 仓库根目录的绝对路径：
 
 ```yaml
-data_dir: /home/bohao-fang/asc26/unifolm-world-model-action
+data_dir: /abs/path/to/unifolm-world-model-action
+```
+
+你可以用命令快速检查：
+```bash
+grep -n "data_dir" "$ASC26_ROOT/unifolm-world-model-action/configs/inference/world_model_interaction.yaml"
 ```
 
 ---
 
-## 9. 运行推理（以 case1 为例）
+## 9. 运行推理（例：unitree_g1_pack_camera/case1）
 
-务必从 **UnifoLM 仓库根目录** 执行脚本（避免相对路径错乱）：
+务必从 UnifoLM 仓库根目录运行：
 
 ```bash
 conda activate asc26
-cd /home/bohao-fang/asc26/unifolm-world-model-action
+cd "$ASC26_ROOT/unifolm-world-model-action"
 
 bash unitree_g1_pack_camera/case1/run_world_model_interaction.sh
 ```
 
 查看是否在跑：
-
 ```bash
 pgrep -af world_model_interaction.py
 ```
 
 ---
 
-## 10. PSNR 评测
+## 10. PSNR 评测（官方示例命令）
 
-PSNR 脚本位于官方输入仓库根目录：
+PSNR 脚本在：
+`$ASC26_ROOT/ASC26-Embodied-World-Model-Optimization/psnr_score_for_challenge.py`
 
-`/home/bohao-fang/asc26/ASC26-Embodied-World-Model-Optimization/psnr_score_for_challenge.py`
-
-先看帮助：
-
+查看帮助：
 ```bash
-python /home/bohao-fang/asc26/ASC26-Embodied-World-Model-Optimization/psnr_score_for_challenge.py -h
+python "$ASC26_ROOT/ASC26-Embodied-World-Model-Optimization/psnr_score_for_challenge.py" -h
 ```
 
-然后按脚本要求传入你的输出目录/GT 目录（不同 case 可能不同，以官方脚本说明为准）。
+官方示例（以 `unitree_g1_pack_camera/case1` 为例）：
+
+```bash
+python3 "$ASC26_ROOT/ASC26-Embodied-World-Model-Optimization/psnr_score_for_challenge.py" \
+  --gt_video unitree_g1_pack_camera/case1/unitree_g1_pack_camera_case1.mp4 \
+  --pred_video unitree_g1_pack_camera/case1/output/inference/0_full_fs6.mp4 \
+  --output_file unitree_g1_pack_camera/case1/psnr_result.json
+```
 
 ---
