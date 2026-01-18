@@ -1,0 +1,18 @@
+# Do NOT commit large assets / datasets / outputs
+models/
+ckpts/
+**/*.ckpt
+**/*.safetensors
+
+ASC26-Embodied-World-Model-Optimization/
+unitree_*/
+**/*.mp4
+**/*.h5
+
+**/output/
+**/*.log
+summary.json
+psnr_result.json
+
+.cache/
+**/__pycache__/
