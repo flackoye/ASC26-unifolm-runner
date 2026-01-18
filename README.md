@@ -1,6 +1,6 @@
 # ASC26 UnifoLM Runner
 
-本仓库用于记录我在 VM 上跑 ASC26 baseline（UnifoLM world model interaction）的**可复现流程**：从零开始搭环境、准备代码/输入/模型、按 case 脚本运行、以及 PSNR 评测。
+本仓库用于记录我在 VM 的Ubuntu上跑 ASC26 baseline（UnifoLM world model interaction）的**可复现流程**：从零开始搭环境、准备代码/输入/模型、按 case 脚本运行、以及 PSNR 评测。
 
 本仓库 **不包含** 数据集/模型权重/输出结果（避免仓库过大和误提交）。
 
